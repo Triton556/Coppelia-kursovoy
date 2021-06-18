@@ -201,18 +201,14 @@ while True:
             lidar_points = sim.simxUnpackFloats(lidar_points_string)
             #print(lidar_points)
 
-            for i in range(floor(len(lidar_points)/3)):
+            for i in range(0, len(lidar_points),3):
                 point = [0, 0, 0]
-                global_point = [0,0,0]
-                k = i*3
-                point[2] = lidar_points[k-1]
-                point[1] = lidar_points[k-2]
-                point[0] = lidar_points[k-3]
-                global_point = Vel_rotate(alpha,beta,gamma,point[0],point[1],point[2]) + integrated_pos
-                #scanned_points.append(global_point)
+                point_in_lidar = [lidar_points[i],lidar_points[i+1],lidar_points[i+2]]
+                point_in_glob = Vel_rotate(alpha,beta,gamma,point_in_lidar[0] + integrated_pos[0],point_in_lidar[1] + integrated_pos[1],point_in_lidar[2] + integrated_pos[2])
+
                 with open('points.csv', 'a', newline='') as csvfile:
                     cloud_writer = csv.writer(csvfile)
-                    cloud_writer.writerow([global_point[0],global_point[1],global_point[2]])
+                    cloud_writer.writerow([point_in_glob[0],point_in_glob[1],point_in_glob[2]])
                 #cloud_writer.writerow(scanned_points[i])
                 #print(f'i: {i} pt: {scanned_points[i]}')
 
