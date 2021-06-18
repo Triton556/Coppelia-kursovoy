@@ -1,5 +1,7 @@
+import csv
+
 import sim
-from math import cos, sin, sqrt, fabs, atan2
+from math import cos, sin, sqrt, fabs, atan2, floor
 import time
 import threading
 
@@ -143,6 +145,9 @@ alpha = 0
 beta = 0
 gamma = 0
 
+scanned_points = []
+
+target_height = 2
 last_height_err = 0.0
 
 target_velocity = 1
@@ -157,11 +162,20 @@ angles = [0.0, 0.0, 0.0]
 target_relative_pos = [0, 0, 0]
 dt = 0.000001
 
+
+lidar_end_time = 0
+lidar_check_time = 0.2
+
 velocity_err = 0.0
 
 threading.Thread(target=set_pos, daemon=True).start()
 
+with open('points.csv', 'w', newline='') as csvfile:
+    cloud_writer = csv.writer(csvfile)
+    cloud_writer.writerow(['x','y','z'])
+
 while True:
+
 
     start_time = time.time()
 
@@ -173,25 +187,41 @@ while True:
 
     res, target_handle = sim.simxGetIntegerSignal(clientID,'target_handle', sim.simx_opmode_oneshot)
 
-    # res, gamma_err = sim.simxGetFloatSignal(clientID, 'gamma_err', sim.simx_opmode_oneshot)
-
-    # res, dist = sim.simxGetFloatSignal(clientID, 'dist', sim.simx_opmode_oneshot)
-
-    res, height = sim.simxGetFloatSignal(clientID, 'height', sim.simx_opmode_oneshot)
-
-    # res, alpha = sim.simxGetFloatSignal(clientID, 'alpha', sim.simx_opmode_oneshot)
-
-    # res, beta = sim.simxGetFloatSignal(clientID, 'beta', sim.simx_opmode_oneshot)
-
     res, velocity_string = sim.simxGetStringSignal(clientID, 'velocity', sim.simx_opmode_oneshot)
 
     res, ang_velocity_string = sim.simxGetStringSignal(clientID, 'ang_velocity', sim.simx_opmode_oneshot)
 
     res, angles_string = sim.simxGetStringSignal(clientID, 'angles', sim.simx_opmode_oneshot)
 
-    res = sim.simxSetObjectPosition(clientID, target_handle, -1, target_pos, sim.simx_opmode_oneshot)
+    if start_time - lidar_end_time > lidar_check_time:
 
-    res, target_relative_pos = sim.simxGetObjectPosition(clientID, target_handle, robot, sim.simx_opmode_oneshot)
+        res, lidar_points_string = sim.simxGetStringSignal(clientID, 'lidar_points', sim.simx_opmode_oneshot)
+
+        if lidar_points_string !=[]:
+            lidar_points = sim.simxUnpackFloats(lidar_points_string)
+            #print(lidar_points)
+
+            for i in range(floor(len(lidar_points)/3)):
+                point = [0, 0, 0]
+                global_point = [0,0,0]
+                k = i*3
+                point[2] = lidar_points[k-1]
+                point[1] = lidar_points[k-2]
+                point[0] = lidar_points[k-3]
+                global_point = Vel_rotate(alpha,beta,gamma,point[0],point[1],point[2]) + integrated_pos
+                #scanned_points.append(global_point)
+                with open('points.csv', 'a', newline='') as csvfile:
+                    cloud_writer = csv.writer(csvfile)
+                    cloud_writer.writerow([global_point[0],global_point[1],global_point[2]])
+                #cloud_writer.writerow(scanned_points[i])
+                #print(f'i: {i} pt: {scanned_points[i]}')
+
+        lidar_end_time = time.time()
+
+    if target_handle != 0:
+        res = sim.simxSetObjectPosition(clientID, target_handle, -1, target_pos, sim.simx_opmode_oneshot)
+
+        res, target_relative_pos = sim.simxGetObjectPosition(clientID, target_handle, robot, sim.simx_opmode_oneshot)
 
     velocity = sim.simxUnpackFloats(velocity_string)
 
@@ -218,7 +248,7 @@ while True:
     for i in range(len(last_velocity)):
         integrated_pos[i] += integrate(new_velocity[i], last_velocity[i], dt)
 
-    print(f'pos {integrated_pos}')
+    #print(f'pos {integrated_pos}')
 
     last_velocity = new_velocity
 
@@ -266,7 +296,7 @@ while True:
     w3 = (w_kurs + w_move - ang_corr_z) * fabs(w_kurs + w_move - ang_corr_z)
     w4 = (w_kurs - w_move - ang_corr_z) * fabs(w_kurs - w_move - ang_corr_z)
 
-    height_err = target_relative_pos[2]
+    height_err = target_height - integrated_pos[2]
 
     height_w, height_wi = PIDregHeight(dt, last_height_err, height_err, 0)
 
