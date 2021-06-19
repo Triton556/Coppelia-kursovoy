@@ -1,13 +1,16 @@
 import csv
+import sys
 
 import sim
-from math import cos, sin, sqrt, fabs, atan2, floor
+from math import cos, sin, sqrt, fabs, atan2, floor,radians
 import time
 import threading
+import path
+import numpy as np
 
 
 def PIDregKurs(h, e_last, e, Ui, maxU=3.0):
-    P = 2.1
+    P = 1.5
     I = 0.00004
     D = 0.03
     Up = P * e
@@ -29,9 +32,9 @@ def PIDregKurs(h, e_last, e, Ui, maxU=3.0):
     return U, Ui
 
 
-def PIDregVel(h, e_last, e, Ui, maxU=13.0):
-    P = 5  # *10
-    I = 0.001 * 250
+def PIDregVel(h, e_last, e, Ui, maxU=11.0):
+    P = 4  # *10
+    I = 0.001 * 100
     D = 1000 * 500
     Up = P * e
     Ui = Ui + I * e * h
@@ -71,8 +74,8 @@ def PIDregAngVel(h, e_last, e, Ui, maxU=5.0):
     return U, Ui
 
 
-def PIDregHeight(h, e_last, e, Ui, maxU=3.0):
-    P = 2.5  # *10
+def PIDregHeight(h, e_last, e, Ui, maxU=8.0):
+    P = 8  # *10
     I = 0.05
     D = 0.5
     Up = P * e
@@ -105,7 +108,7 @@ def Vel_rotate(a, b, g, vx, vy, vz):
 def integrate(sig, last_sig, dt):
     integ = ((sig + last_sig) / 2) * dt
 
-    #integ = sig * dt
+    # integ = sig * dt
 
     return integ
 
@@ -124,11 +127,12 @@ clientID = sim.simxStart('127.0.0.1', 19997, True, True, 15000, 5)
 if clientID != -1:
     print('Connected to remote API server')
 
-
 res = sim.simxStartSimulation(clientID, sim.simx_opmode_oneshot_wait)
 
 res, robot = sim.simxGetObjectHandle(clientID, 'robot', sim.simx_opmode_oneshot_wait)
-#res, target = sim.simxGetObjectHandle(clientID, 'target_object', sim.simx_opmode_oneshot)
+# res, target = sim.simxGetObjectHandle(clientID, 'target_object', sim.simx_opmode_oneshot)
+
+simStarted = False
 
 last_time = 0.0
 last_gamma_err = 0.0
@@ -150,9 +154,17 @@ scanned_points = []
 target_height = 2
 last_height_err = 0.0
 
-target_velocity = 1
+target_velocity = 0.8
+point_num = 0
+start = [-5, -5]
+end = [5, 5]
 
-target_pos = [5.0, 5.0, 5.0]
+route = path.create_path(start, end, start, target_height)
+route = np.asarray(route)
+
+target_pos = route[point_num]
+sleep_time = 0.5
+sleep = 0
 
 integrated_pos = [0.0, 0.0, 0.0]
 last_velocity = [0.0, 0.0, 0.0]
@@ -160,8 +172,8 @@ new_velocity = [0.0, 0.0, 0.0]
 ock_velocity = [0.0, 0.0, 0.0]
 angles = [0.0, 0.0, 0.0]
 target_relative_pos = [0, 0, 0]
-dt = 0.000001
-
+dt = 0.0000001
+height_err = 0
 
 lidar_end_time = 0
 lidar_check_time = 0.2
@@ -172,10 +184,9 @@ threading.Thread(target=set_pos, daemon=True).start()
 
 with open('points.csv', 'w', newline='') as csvfile:
     cloud_writer = csv.writer(csvfile)
-    cloud_writer.writerow(['x','y','z'])
-
+    cloud_writer.writerow(['x', 'y', 'z'])
+time.sleep(1)
 while True:
-
 
     start_time = time.time()
 
@@ -185,7 +196,7 @@ while True:
 
     res, robotPos = sim.simxGetObjectPosition(clientID, robot, -1, sim.simx_opmode_oneshot)
 
-    res, target_handle = sim.simxGetIntegerSignal(clientID,'target_handle', sim.simx_opmode_oneshot)
+    res, target_handle = sim.simxGetIntegerSignal(clientID, 'target_handle', sim.simx_opmode_oneshot)
 
     res, velocity_string = sim.simxGetStringSignal(clientID, 'velocity', sim.simx_opmode_oneshot)
 
@@ -193,31 +204,63 @@ while True:
 
     res, angles_string = sim.simxGetStringSignal(clientID, 'angles', sim.simx_opmode_oneshot)
 
+    res, curr_height = sim.simxGetFloatSignal(clientID, 'height', sim.simx_opmode_oneshot)
+
+
+
+    height_err = target_height - curr_height
+
     if start_time - lidar_end_time > lidar_check_time:
 
         res, lidar_points_string = sim.simxGetStringSignal(clientID, 'lidar_points', sim.simx_opmode_oneshot)
 
-        if lidar_points_string !=[]:
+        if lidar_points_string != []:
             lidar_points = sim.simxUnpackFloats(lidar_points_string)
-            #print(lidar_points)
+            # print(lidar_points)
 
-            for i in range(0, len(lidar_points),3):
+            for i in range(0, len(lidar_points), 3):
                 point = [0, 0, 0]
-                point_in_lidar = [lidar_points[i],lidar_points[i+1],lidar_points[i+2]]
-                point_in_glob = Vel_rotate(alpha,beta,gamma,point_in_lidar[0] + integrated_pos[0],point_in_lidar[1] + integrated_pos[1],point_in_lidar[2] + integrated_pos[2])
+                point_in_lidar = [lidar_points[i], lidar_points[i + 1], lidar_points[i + 2]]
+                point_in_glob = Vel_rotate(alpha-radians(90), beta-radians(90), gamma-radians(90), point_in_lidar[0], point_in_lidar[1], point_in_lidar[2])
 
                 with open('points.csv', 'a', newline='') as csvfile:
                     cloud_writer = csv.writer(csvfile)
-                    cloud_writer.writerow([point_in_glob[0],point_in_glob[1],point_in_glob[2]])
-                #cloud_writer.writerow(scanned_points[i])
-                #print(f'i: {i} pt: {scanned_points[i]}')
+                    cloud_writer.writerow([point_in_glob[0] + integrated_pos[0], point_in_glob[1] + integrated_pos[1],
+                                           point_in_glob[2] - height_err + integrated_pos[2]])
+                # cloud_writer.writerow(scanned_points[i])
+                # print(f'i: {i} pt: {scanned_points[i]}')
 
         lidar_end_time = time.time()
 
+    target_pos = route[point_num]
+
     if target_handle != 0:
-        res = sim.simxSetObjectPosition(clientID, target_handle, -1, target_pos, sim.simx_opmode_oneshot)
+        # res = sim.simxSetObjectPosition(clientID, target_handle, -1, target_pos, sim.simx_opmode_oneshot)
 
         res, target_relative_pos = sim.simxGetObjectPosition(clientID, target_handle, robot, sim.simx_opmode_oneshot)
+
+        dist = sqrt((target_relative_pos[0]) ** 2 + (target_relative_pos[1]) ** 2)
+
+        if dist < 0.3:
+
+            if (point_num < len(route[:, 0]) - 1) and simStarted and start_time - sleep >= sleep_time:
+                point_num += 1
+
+                target_pos = route[point_num]
+                set_point = [target_pos[0],target_pos[1],1]
+
+
+                res = sim.simxSetObjectPosition(clientID, target_handle, -1, set_point,
+                                                sim.simx_opmode_oneshot)
+
+                res, target_relative_pos = sim.simxGetObjectPosition(clientID, target_handle, robot,
+                                                                     sim.simx_opmode_oneshot)
+                dist = sqrt((target_relative_pos[0]) ** 2 + (target_relative_pos[1]) ** 2)
+
+                sleep = time.time()
+            elif (point_num >= len(route[:, 0]) - 1):
+                sim.simxStopSimulation(clientID, sim.simx_opmode_oneshot)
+                sys.exit()
 
     velocity = sim.simxUnpackFloats(velocity_string)
 
@@ -226,6 +269,7 @@ while True:
     angles = sim.simxUnpackFloats(angles_string)
 
     if angles != []:
+        simStarted = True
         alpha = angles[0]
         beta = angles[1]
         gamma = angles[2]
@@ -244,7 +288,8 @@ while True:
     for i in range(len(last_velocity)):
         integrated_pos[i] += integrate(new_velocity[i], last_velocity[i], dt)
 
-    #print(f'pos {integrated_pos}')
+    #integrated_pos[2] = curr_height
+    # print(f'pos {integrated_pos}')
 
     last_velocity = new_velocity
 
@@ -264,21 +309,22 @@ while True:
         ang_corr_z = 0
 
     if dist < target_velocity:
-        w_move /= 4
+        w_move /= 2
 
     if dist < 1:
-        w_move = dist * 2
+        w_move = dist * 5
 
-    if dist < 0.25:
-        w_move = 0
-        w_kurs = 0
+    if simStarted:
+        if dist < 0.25:
+            w_move = 0
+            w_kurs = 0
 
     # print(f'\rdt = {dt} Err_vel = {velocity_err} Err_h = {height_err}', end='')
 
     # beta_cor = beta/3
     # alpha_cor = alpha/3
 
-    if alpha > 30 or alpha < -30 or ang_vel_x > 2 or ang_vel_y > 2 or beta > 30 or beta < -30:
+    if alpha > radians(30) or alpha < radians(-30) or ang_vel_x > 2 or ang_vel_y > 2 or beta > radians(30) or beta < radians(-30):
         w_move = 0
         ang_corr_z = 0
         w_kurs = 0
@@ -292,7 +338,7 @@ while True:
     w3 = (w_kurs + w_move - ang_corr_z) * fabs(w_kurs + w_move - ang_corr_z)
     w4 = (w_kurs - w_move - ang_corr_z) * fabs(w_kurs - w_move - ang_corr_z)
 
-    height_err = target_height - integrated_pos[2]
+
 
     height_w, height_wi = PIDregHeight(dt, last_height_err, height_err, 0)
 
@@ -313,7 +359,7 @@ while True:
 
     # print(f'\rdt = {dt} Err_vel = {velocity_err} move_h = {height_w} a = {alpha/3}', end='')
 
-    # print(f'\rpos = {integrated_pos} ', end='')
+    print(f'\rpos = {integrated_pos} | {height_w}', end='')
 
     # print(f'\rg_err {gamma_err} w_kurs {w_kurs} dist{dist}',end='')
 
@@ -326,4 +372,4 @@ while True:
     dt = end_time - start_time
 
     if dt == 0:
-        dt = 0.0000001
+        dt = 0.00000001
