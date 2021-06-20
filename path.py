@@ -52,7 +52,7 @@ for i in range(len(points)):
     pointStrArr = points[i].split(', ')
     point = [float(pointStrArr[0]),float(pointStrArr[1])]
     route.append(point)
-print(route)
+
 
 #print(len(new_path))
 #
