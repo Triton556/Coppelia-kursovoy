@@ -127,7 +127,7 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
     side_force = 0
 
     dt = 0.0000001
-    sleep_time = 0.1
+    sleep_time = 0.15
     sleep = 0
 
     point_num = 0
@@ -242,7 +242,7 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
 
     route = parce_route(mission)
 
-    time.sleep(1)
+    time.sleep(2)
     while True:
 
         start_time = time.time()
@@ -290,7 +290,10 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
                                                                  sim.simx_opmode_oneshot)
             dist = sqrt((target_relative_pos[0]) ** 2 + (target_relative_pos[1]) ** 2)
 
-            if walk_mode == 0 or 1:
+            if walk_mode == 0 or 1: #0 - spline 1 - forward
+
+                if walk_mode == 1:
+                    sleep_time = 1
 
                 if dist < 0.3:
 
@@ -312,13 +315,13 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
         for i in range(len(last_velocity)):
             integrated_pos[i] += integrate(new_velocity[i], last_velocity[i], dt)
 
-        msg = f'pos|{integrated_pos[0]}|{integrated_pos[1]}|{integrated_pos[2]}'
+        msg = f'pos|{integrated_pos[0]}|{integrated_pos[1]}|{integrated_pos[2]}'.encode()
 
         send_to_interface(s, msg)
 
         traveled_dist += sqrt(new_velocity[0] ** 2 + new_velocity[1] ** 2 + new_velocity[2] ** 2) * dt
 
-        msg = f'trav_vel|{traveled_dist}'
+        msg = f'trav_dist|{traveled_dist}'.encode()
 
         send_to_interface(s, msg)
 

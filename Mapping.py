@@ -87,7 +87,7 @@ def map_making(s: socket.socket, lidar_check_time):
         print('Connected to remote API server')
 
     lidar_end_time = 0
-
+    time.sleep(2)
     while True:
         if clientID == -1:
             print('not connected to coppelia!')
@@ -116,7 +116,7 @@ def map_making(s: socket.socket, lidar_check_time):
                         cloud_writer.writerow(
                             [point_in_glob[0] + integrated_pos[0], point_in_glob[1] + integrated_pos[1],
                              point_in_glob[2] - height_err + integrated_pos[2]])
-                        print(f'\r{point}', end='')
+
             lidar_end_time = time.time()
 
 
