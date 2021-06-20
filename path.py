@@ -1,7 +1,7 @@
 from math import tan, radians, ceil
 import matplotlib.pyplot as plt
 import numpy as np
-
+import Spline
 
 def create_path(start, end, curr_pos, scan_height):
     path = []
@@ -40,11 +40,28 @@ def create_path(start, end, curr_pos, scan_height):
         path.append(point)
     return path
 
-#new_path = create_path([-15,-15],[15,15],[0,0],1)
+new_path = create_path([-5,-15],[15,5],[0,0],1)
 #new_path = np.asarray(new_path)
-##print(new_path)
+
+pointStr = str.strip(str(new_path), '[]')
+print(pointStr)
+points = pointStr.split('], [')
+print(points)
+route = []
+for i in range(len(points)):
+    pointStrArr = points[i].split(', ')
+    point = [float(pointStrArr[0]),float(pointStrArr[1])]
+    route.append(point)
+print(route)
+
 #print(len(new_path))
 #
 #plt.grid()
 #plt.plot(new_path[:,0],new_path[:,1])
+#
+#spline = Spline.Find_spline(new_path[:,0],new_path[:,1])
+#spline = np.asarray(spline)
+#plt.plot(spline[:,0],spline[:,1], marker='x', color='springgreen', linestyle=":")
+#print(spline)
+#
 #plt.show()
