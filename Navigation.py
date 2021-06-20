@@ -13,12 +13,15 @@ UDP_MAX_SIZE = 65535
 mapping_manager = ('127.0.0.1', 3001)
 interface_manager = ('127.0.0.1', 3002)
 
+start_sim = False
+flag = False
+
 
 def connect(host: str = '127.0.0.1', port: int = 3003):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind((host, port))
 
-    msg = "Navigation connected!".encode()
+    msg = "nav".encode()
     send_to_interface(s, msg)
 
     threading.Thread(target=listen, args=(s,), daemon=True).start()
@@ -29,29 +32,12 @@ def connect(host: str = '127.0.0.1', port: int = 3003):
 
     time.sleep(2)
 
-
-    threading.Thread(target=work_with_coppelia, args=(1,'[[0.0, 0.0], [-5.0, -15.0], [-5.0, 5.0], [-4.0, 5.0], [-4.0, -15.0], [-3.0, -15.0], [-3.0, '
-                       '5.0], [-2.0, 5.0], [-2.0, -15.0], [-1.0, -15.0], [-1.0, 5.0], [-1.1102230246251565e-16, 5.0], '
-                       '[-1.1102230246251565e-16, -15.0], [0.9999999999999998, -15.0], [0.9999999999999998, 5.0], '
-                       '[1.9999999999999996, 5.0], [1.9999999999999996, -15.0], [2.9999999999999996, -15.0], '
-                       '[2.9999999999999996, 5.0], [3.9999999999999996, 5.0], [3.9999999999999996, -15.0], '
-                       '[4.999999999999999, -15.0], [4.999999999999999, 5.0], [5.999999999999999, 5.0], '
-                       '[5.999999999999999, -15.0], [6.999999999999999, -15.0], [6.999999999999999, 5.0], '
-                       '[7.999999999999999, 5.0], [7.999999999999999, -15.0], [8.999999999999998, -15.0], '
-                       '[8.999999999999998, 5.0], [9.999999999999998, 5.0], [9.999999999999998, -15.0], '
-                       '[10.999999999999998, -15.0], [10.999999999999998, 5.0], [11.999999999999998, 5.0], '
-                       '[11.999999999999998, -15.0], [12.999999999999998, -15.0], [12.999999999999998, 5.0], '
-                       '[13.999999999999998, 5.0], [13.999999999999998, -15.0], [14.999999999999998, -15.0], '
-                       '[14.999999999999998, 5.0]]',
-                       s,), daemon=True).start()
-
     while True:
         input('working...')
 
 
-
-
 def listen(s: socket.socket):
+    global start_sim, flag
     while True:
         try:
             msg = s.recv(UDP_MAX_SIZE)
@@ -60,7 +46,24 @@ def listen(s: socket.socket):
             print('no data')
             continue
 
-        data = msg.decode().split('|')
+        if not msg:
+            continue
+
+        try:
+            data = msg.decode().split('|')
+            if data[0] == 'start' and not flag:
+                if not flag:
+                    move_mode = int(data[1])
+                    mission = data[2]
+                    target_vel = float(data[3])
+                    target_height = float(data[4])
+                    threading.Thread(target=work_with_coppelia, args=(move_mode, mission, s, target_vel, target_height),
+                                     daemon=True).start()
+                    flag = True
+
+
+        except:
+            continue
 
 
 def send_to_interface(s: socket.socket, msg):
@@ -68,7 +71,6 @@ def send_to_interface(s: socket.socket, msg):
 
 
 def send_to_mapping(s: socket.socket, msg):
-
     s.sendto(msg, mapping_manager)
 
 
@@ -103,6 +105,7 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
     last_velocity_err = 0
     ock_velocity = [0, 0, 0]
 
+    traveled_dist = 0
     integrated_pos = [0, 0, 0]
     target_relative_pos = [0, 0, 0]
     dist = 0
@@ -242,10 +245,6 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
     time.sleep(1)
     while True:
 
-
-
-
-
         start_time = time.time()
 
         res, target_handle = sim.simxGetIntegerSignal(clientID, 'target_handle', sim.simx_opmode_oneshot)
@@ -260,7 +259,7 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
 
         res, lidar_points_string = sim.simxGetStringSignal(clientID, 'lidar_points', sim.simx_opmode_oneshot)
 
-        send_to_mapping(s,lidar_points_string)
+        send_to_mapping(s, lidar_points_string)
 
         velocity = sim.simxUnpackFloats(velocity_string)
 
@@ -313,6 +312,16 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
         for i in range(len(last_velocity)):
             integrated_pos[i] += integrate(new_velocity[i], last_velocity[i], dt)
 
+        msg = f'pos|{integrated_pos[0]}|{integrated_pos[1]}|{integrated_pos[2]}'
+
+        send_to_interface(s, msg)
+
+        traveled_dist += sqrt(new_velocity[0] ** 2 + new_velocity[1] ** 2 + new_velocity[2] ** 2) * dt
+
+        msg = f'trav_vel|{traveled_dist}'
+
+        send_to_interface(s, msg)
+
         last_velocity = new_velocity
 
         gamma_err = atan2(target_relative_pos[1], target_relative_pos[0])
@@ -321,13 +330,9 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
 
         height_err = target_height - curr_height
 
-
-
         msg = f'nav|{alpha}|{beta}|{gamma}|{integrated_pos[0]}|{integrated_pos[1]}|{integrated_pos[2]}|{clientID}|{lidar_points_string}'.encode()
 
         send_to_mapping(s, msg)
-
-
 
         w_kurs, wi_kurs = PIDregKurs(dt, last_gamma_err, gamma_err, wi_kurs)
 
@@ -390,7 +395,7 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
         res = sim.simxSetFloatSignal(clientID, 'w9', w9, sim.simx_opmode_oneshot)
         res = sim.simxSetFloatSignal(clientID, 'w10', w10, sim.simx_opmode_oneshot)
 
-        print(f'\rN {point_num} target{target_pos} dist {dist}', end='')
+        print(f'\rN {point_num} target{target_pos} dist {traveled_dist}', end='')
 
         last_gamma_err = gamma_err
         last_velocity_err = velocity_err
@@ -406,6 +411,6 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
 
 if __name__ == "__main__":
     connect()
-    #work_with_coppelia(1,
+    # work_with_coppelia(1,
     #                   '[[0.0, 0.0], [-5.0, -15.0], [-5.0, 5.0], [-4.0, 5.0], [-4.0, -15.0], [-3.0, -15.0], [-3.0, 5.0], [-2.0, 5.0], [-2.0, -15.0], [-1.0, -15.0], [-1.0, 5.0], [-1.1102230246251565e-16, 5.0], [-1.1102230246251565e-16, -15.0], [0.9999999999999998, -15.0], [0.9999999999999998, 5.0], [1.9999999999999996, 5.0], [1.9999999999999996, -15.0], [2.9999999999999996, -15.0], [2.9999999999999996, 5.0], [3.9999999999999996, 5.0], [3.9999999999999996, -15.0], [4.999999999999999, -15.0], [4.999999999999999, 5.0], [5.999999999999999, 5.0], [5.999999999999999, -15.0], [6.999999999999999, -15.0], [6.999999999999999, 5.0], [7.999999999999999, 5.0], [7.999999999999999, -15.0], [8.999999999999998, -15.0], [8.999999999999998, 5.0], [9.999999999999998, 5.0], [9.999999999999998, -15.0], [10.999999999999998, -15.0], [10.999999999999998, 5.0], [11.999999999999998, 5.0], [11.999999999999998, -15.0], [12.999999999999998, -15.0], [12.999999999999998, 5.0], [13.999999999999998, 5.0], [13.999999999999998, -15.0], [14.999999999999998, -15.0], [14.999999999999998, 5.0]]',
     #                   s)

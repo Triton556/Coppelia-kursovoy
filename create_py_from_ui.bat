@@ -1,0 +1,1 @@
+C:\Users\Danil\AppData\Local\Programs\Python\Python39\Scripts\pyuic5.exe -x C:\Users\Danil\Desktop\FEFE\1Kursovoi_Uxa\Coppelia-kursovoy\interface1.ui -o C:\Users\Danil\Desktop\FEFE\1Kursovoi_Uxa\Coppelia-kursovoy\interface1.py

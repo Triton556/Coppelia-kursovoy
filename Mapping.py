@@ -11,10 +11,13 @@ UDP_MAX_SIZE = 65535
 navigation_manager = ('127.0.0.1', 3003)
 interface_manager = ('127.0.0.1', 3002)
 
+flag = False
+
 integrated_pos = [0.0, 0.0, 0.0]
 alpha, beta, gamma, height_err, clientID = 0.0, 0.0, 0.0, 0.0, -1
-lidar_check_time = 0.15
-lidar_points =[]
+
+lidar_points = []
+
 
 def Vel_rotate(a, b, g, vx, vy, vz):
     va_x = vx * (cos(b) * cos(g) - sin(a) * sin(b) * sin(g)) - vy * (cos(a) * sin(g)) + vz * (
@@ -29,20 +32,13 @@ def connect(host: str = '127.0.0.1', port: int = 3001):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind((host, port))
 
-    msg = "Mapping connected!".encode()
+    msg = "map".encode()
     send_to_interface(s, msg)
 
     threading.Thread(target=listen, args=(s,), daemon=True).start()
 
-    threading.Thread(target=map_making, args=(s,), daemon=True).start()
-    print('thread started')
-
-    #map_making(s)
-
     while True:
         input('working...')
-
-
 
 
 def listen(s: socket.socket):
@@ -70,6 +66,11 @@ def listen(s: socket.socket):
                 integrated_pos[2] = float(data[6])
                 clientID = int(data[7])
                 lidar_points_string = data[8]
+            elif data[0] == 'start':
+                if not flag:
+                    threading.Thread(target=map_making, args=(s,float(data[1])), daemon=True).start()
+                    print('thread started')
+
         except:
             lidar_points_string = msg
             lidar_points = sim.simxUnpackFloats(lidar_points_string)
@@ -79,11 +80,11 @@ def send_to_interface(s: socket.socket, msg):
     s.sendto(msg, interface_manager)
 
 
-def map_making(s: socket.socket):
-    global integrated_pos, alpha, beta, gamma, height_err, lidar_check_time, clientID
+def map_making(s: socket.socket, lidar_check_time):
+    global integrated_pos, alpha, beta, gamma, height_err, clientID
 
     if clientID != -1:
-       print('Connected to remote API server')
+        print('Connected to remote API server')
 
     lidar_end_time = 0
 
@@ -94,13 +95,13 @@ def map_making(s: socket.socket):
             continue
 
         start_time = time.time()
-        #print(start_time - lidar_end_time)
+        # print(start_time - lidar_end_time)
         if start_time - lidar_end_time > lidar_check_time:
 
-            #res, lidar_points_string = sim.simxGetStringSignal(clientID, 'lidar_points', sim.simx_opmode_oneshot)
-            #print(lidar_points_string)
+            # res, lidar_points_string = sim.simxGetStringSignal(clientID, 'lidar_points', sim.simx_opmode_oneshot)
+            # print(lidar_points_string)
             if lidar_points != []:
-                #lidar_points = sim.simxUnpackFloats(lidar_points_string)
+                # lidar_points = sim.simxUnpackFloats(lidar_points_string)
 
                 for i in range(0, len(lidar_points), 3):
                     point = [0, 0, 0]
