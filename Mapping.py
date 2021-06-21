@@ -1,5 +1,6 @@
 import csv
 import socket
+import sys
 import threading
 
 import sim
@@ -12,6 +13,7 @@ navigation_manager = ('127.0.0.1', 3003)
 interface_manager = ('127.0.0.1', 3002)
 
 flag = False
+stop_sim = False
 
 integrated_pos = [0.0, 0.0, 0.0]
 alpha, beta, gamma, height_err, clientID = 0.0, 0.0, 0.0, 0.0, -1
@@ -38,25 +40,34 @@ def connect(host: str = '127.0.0.1', port: int = 3001):
     threading.Thread(target=listen, args=(s,), daemon=True).start()
 
     while True:
+        if stop_sim:
+            break
         input('working...')
 
 
 def listen(s: socket.socket):
-    global integrated_pos, alpha, beta, gamma, height_err, clientID, lidar_points
+    global integrated_pos, alpha, beta, gamma, height_err, clientID, lidar_points, stop_sim
     while True:
+
+        msg = None
 
         try:
             msg = s.recv(UDP_MAX_SIZE)
 
         except ConnectionResetError:
-            print('no data')
-            continue
+            if stop_sim:
+                break
 
         if not msg:
             continue
 
         try:
+
+            if msg.decode() == 'stop':
+                stop_sim = True
+
             data = msg.decode().split('|')
+
             if data[0] == 'nav':
                 alpha = float(data[1])
                 beta = float(data[2])
@@ -68,7 +79,7 @@ def listen(s: socket.socket):
                 lidar_points_string = data[8]
             elif data[0] == 'start':
                 if not flag:
-                    threading.Thread(target=map_making, args=(s,float(data[1])), daemon=True).start()
+                    threading.Thread(target=map_making, args=(s, float(data[1])), daemon=True).start()
                     print('thread started')
 
         except:
@@ -81,7 +92,7 @@ def send_to_interface(s: socket.socket, msg):
 
 
 def map_making(s: socket.socket, lidar_check_time):
-    global integrated_pos, alpha, beta, gamma, height_err, clientID
+    global integrated_pos, alpha, beta, gamma, height_err, clientID, stop_sim
 
     if clientID != -1:
         print('Connected to remote API server')
@@ -89,6 +100,11 @@ def map_making(s: socket.socket, lidar_check_time):
     lidar_end_time = 0
     time.sleep(2)
     while True:
+        if stop_sim:
+            s.close()
+            break
+
+
         if clientID == -1:
             print('not connected to coppelia!')
 
@@ -121,4 +137,7 @@ def map_making(s: socket.socket, lidar_check_time):
 
 
 if __name__ == "__main__":
+    import sys
     connect()
+    sys.exit()
+

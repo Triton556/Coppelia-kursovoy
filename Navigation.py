@@ -1,4 +1,5 @@
 import socket
+import sys
 import threading
 import Spline
 import sim
@@ -15,6 +16,7 @@ interface_manager = ('127.0.0.1', 3002)
 
 start_sim = False
 flag = False
+stop_sim = False
 
 
 def connect(host: str = '127.0.0.1', port: int = 3003):
@@ -33,18 +35,24 @@ def connect(host: str = '127.0.0.1', port: int = 3003):
     time.sleep(2)
 
     while True:
+        if stop_sim:
+            break
         input('working...')
 
 
 def listen(s: socket.socket):
-    global start_sim, flag
+    global start_sim, flag, stop_sim
     while True:
         try:
             msg = s.recv(UDP_MAX_SIZE)
-            print(msg)
+
+            if msg.decode() == 'stop':
+                print('sim stopped')
+                stop_sim = True
+
         except ConnectionResetError:
-            print('no data')
-            continue
+            if stop_sim:
+                break
 
         if not msg:
             continue
@@ -63,7 +71,8 @@ def listen(s: socket.socket):
 
 
         except:
-            continue
+            if msg.decode() == 'stop':
+                stop_sim = True
 
 
 def send_to_interface(s: socket.socket, msg):
@@ -84,6 +93,7 @@ def Vel_rotate(a, b, g, vx, vy, vz):
 
 
 def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_velocity=0.8, target_height=2):
+    global stop_sim
     simStarted = False
     target_handle = 0
 
@@ -245,6 +255,14 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
     time.sleep(2)
     while True:
 
+        if stop_sim:
+            res = sim.simxStopSimulation(clientID, sim.simx_opmode_oneshot_wait)
+            res = sim.simxFinish(clientID)
+            time.sleep(2)
+            s.close()
+            break
+
+
         start_time = time.time()
 
         res, target_handle = sim.simxGetIntegerSignal(clientID, 'target_handle', sim.simx_opmode_oneshot)
@@ -290,7 +308,7 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
                                                                  sim.simx_opmode_oneshot)
             dist = sqrt((target_relative_pos[0]) ** 2 + (target_relative_pos[1]) ** 2)
 
-            if walk_mode == 0 or 1: #0 - spline 1 - forward
+            if walk_mode == 0 or 1:  # 0 - spline 1 - forward
 
                 if walk_mode == 1:
                     sleep_time = 1
@@ -321,7 +339,7 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
 
         traveled_dist += sqrt(new_velocity[0] ** 2 + new_velocity[1] ** 2 + new_velocity[2] ** 2) * dt
 
-        msg = f'trav_dist|{traveled_dist}'.encode()
+        msg = f'trav_dist|{point_num}'.encode()
 
         send_to_interface(s, msg)
 
@@ -413,7 +431,9 @@ def work_with_coppelia(walk_mode: int, mission: str, s: socket.socket, target_ve
 
 
 if __name__ == "__main__":
+    import  sys
     connect()
+    sys.exit()
     # work_with_coppelia(1,
     #                   '[[0.0, 0.0], [-5.0, -15.0], [-5.0, 5.0], [-4.0, 5.0], [-4.0, -15.0], [-3.0, -15.0], [-3.0, 5.0], [-2.0, 5.0], [-2.0, -15.0], [-1.0, -15.0], [-1.0, 5.0], [-1.1102230246251565e-16, 5.0], [-1.1102230246251565e-16, -15.0], [0.9999999999999998, -15.0], [0.9999999999999998, 5.0], [1.9999999999999996, 5.0], [1.9999999999999996, -15.0], [2.9999999999999996, -15.0], [2.9999999999999996, 5.0], [3.9999999999999996, 5.0], [3.9999999999999996, -15.0], [4.999999999999999, -15.0], [4.999999999999999, 5.0], [5.999999999999999, 5.0], [5.999999999999999, -15.0], [6.999999999999999, -15.0], [6.999999999999999, 5.0], [7.999999999999999, 5.0], [7.999999999999999, -15.0], [8.999999999999998, -15.0], [8.999999999999998, 5.0], [9.999999999999998, 5.0], [9.999999999999998, -15.0], [10.999999999999998, -15.0], [10.999999999999998, 5.0], [11.999999999999998, 5.0], [11.999999999999998, -15.0], [12.999999999999998, -15.0], [12.999999999999998, 5.0], [13.999999999999998, 5.0], [13.999999999999998, -15.0], [14.999999999999998, -15.0], [14.999999999999998, 5.0]]',
     #                   s)

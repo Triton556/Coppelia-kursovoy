@@ -2,6 +2,7 @@ import math
 import os
 import socket
 import threading
+import sys
 import time
 
 import numpy as np
@@ -25,10 +26,12 @@ listening = False
 has_graph = False
 sim_started = False
 send_start = False
+stop_all = False
+
 path_len = 0.0
 
 robot_pos = [0.0, 0.0, 0.0]
-traveled_dist = 0
+num_point_robot = 0
 
 mission = []
 move_mode = 0
@@ -48,7 +51,7 @@ class Server():
         self.listen(form)
 
     def listen(self, form):
-        global navigation_on, mapping_on, robot_pos, traveled_dist, sim_started, robot_travel_pos
+        global navigation_on, mapping_on, robot_pos, num_point_robot, sim_started, listening
         print("start listening")
         # listening = False
         while listening:
@@ -81,7 +84,7 @@ class Server():
                         robot_pos[2] = float(data[3])
 
                     if data[0] == 'trav_dist':
-                        traveled_dist = data[1]
+                        num_point_robot = data[1]
             except:
                 pass
 
@@ -92,7 +95,14 @@ class Server():
                 start_mes_map = f'start|{scan_freq}'.encode()
                 self.s.sendto(start_mes_map, mapping_manager)
                 sim_started = True
+            elif stop_all:
+                print('stop processing')
+                stop_mes = f'stop'.encode()
+                self.s.sendto(stop_mes, navigation_manager)
+                self.s.sendto(stop_mes, mapping_manager)
+                listening = False
 
+        self.s.close()
         print('server closed!')
 
 
@@ -112,6 +122,10 @@ class Menu(QMainWindow):
         self.form.startButton.clicked.connect(self.calculate_path)
         self.form.startButton.clicked.connect(self.start_mission)
         self.form.stopButton.clicked.connect(self.stop_all)
+
+        barTimer = QtCore.QTimer(self)
+        barTimer.timeout.connect(self.update_progress_bar)
+        barTimer.start(1000)
 
     def start_listening_from_button(self):
         global listening
@@ -181,14 +195,19 @@ class Menu(QMainWindow):
         has_graph = True
 
     def update_progress_bar(self):
-        global path_len, traveled_dist
-        while True:
-            percent = 0.0
-            if path_len > 0:
-                percent = (1 - (path_len - float(traveled_dist)) / path_len) * 100
+        global num_point_robot,listening
+        percent = 0
+        if path_len > 0:
+            percent = math.ceil((1 - (len(mission) - int(num_point_robot)) / len(mission)) * 100)
+        self.form.missionProgress.setValue(math.ceil(percent))
+        if percent == 99:
+            percent = 100
             self.form.missionProgress.setValue(math.ceil(percent))
-            time.sleep(1)
-
+            msgBx = QMessageBox()
+            msgBx.setWindowTitle("Миссия завершена!")
+            msgBx.setText("Робот завершил миссию, файл данных картографирования находится в папке с программой")
+            msgBx.exec()
+            self.stop_all()
     def start_mission(self):
         global move_mode, scan_freq, mission, target_speed, target_height, send_start
 
@@ -203,7 +222,7 @@ class Menu(QMainWindow):
             if scan_freq == 0:
                 scan_freq = 0.1
 
-            threading.Thread(target=self.update_progress_bar).start()
+
 
             send_start = True
         else:
@@ -213,7 +232,12 @@ class Menu(QMainWindow):
             msgBx.exec()
 
     def stop_all(self):
-        sys.exit(app.exec())
+        global stop_all
+        stop_all = True
+        msgBx = QMessageBox()
+        msgBx.setWindowTitle("Стоп")
+        msgBx.setText("Мисиия остановлена")
+        msgBx.exec()
 
 class MyMplCanvas(FigureCanvas):
     """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
@@ -276,3 +300,4 @@ if __name__ == '__main__':
     window.show()
 
     sys.exit(app.exec())
+
